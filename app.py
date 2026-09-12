@@ -175,11 +175,23 @@ with tabs[0]:
             st.plotly_chart(fig2, use_container_width=True)
 
             st.subheader("Risk bands")
-            bands = pd.cut(flagged.risk_score,
-                           [threshold, 0.60, 0.80, 1.01],
-                           labels=["Medium", "High", "Critical"])
-            bc = bands.value_counts().reindex(
-                ["Critical", "High", "Medium"]).fillna(0).reset_index()
+            # Edges must strictly increase, and the slider can move past
+            # 0.60 or 0.80 — so drop any fixed edge at or below the
+            # current threshold. "Critical" always means 0.80 and above.
+            names = ["Medium", "High", "Critical"]
+            edges, labels = [threshold], []
+            for edge, name in zip([0.60, 0.80], names[:2]):
+                if edge > threshold:
+                    edges.append(edge)
+                    labels.append(name)
+            edges.append(1.01)
+            labels = names[len(names) - (len(edges) - 1):]
+
+            bands = pd.cut(flagged.risk_score, edges, labels=labels,
+                           include_lowest=True)
+            bc = (bands.value_counts()
+                  .reindex(["Critical", "High", "Medium"])
+                  .dropna().reset_index())
             bc.columns = ["band", "works"]
             fig3 = px.bar(bc, x="band", y="works", color="band",
                           color_discrete_map={"Critical": RED, "High": AMBER,
