@@ -457,6 +457,10 @@ with tabs[4]:
         m2.metric("Trained on", f"{metrics['train_rows']:,}")
         m3.metric("Held out", f"{metrics['test_rows']:,}")
         m4.metric("Base late rate", f"{metrics['base_late_rate']:.1%}")
+        if metrics.get("backend") == "sklearn":
+            st.caption("Running on the scikit-learn gradient-boosting "
+                       "fallback \u2014 XGBoost is not installed in this "
+                       "environment. Results are near-identical.")
 
         if metrics["auc"] < 0.55:
             st.error("AUC near 0.500 means the model is guessing. That is an "

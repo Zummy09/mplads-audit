@@ -25,7 +25,18 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score, average_precision_score
-from xgboost import XGBClassifier
+
+# XGBoost is the better model on tabular data, but it is a large package and
+# cloud installs do fail. scikit-learn ships an equivalent gradient-boosting
+# implementation, so a missing optional dependency degrades the model rather
+# than taking the whole app down.
+try:
+    from xgboost import XGBClassifier
+    BACKEND = "xgboost"
+except ImportError:                                        # pragma: no cover
+    from sklearn.ensemble import HistGradientBoostingClassifier
+    XGBClassifier = None
+    BACKEND = "sklearn"
 
 import config as C
 import models as M
@@ -85,14 +96,22 @@ def train(df, verbose=True):
     Xtr, Xte, ytr, yte = train_test_split(
         X, y, test_size=0.25, random_state=C.SEED, stratify=y)
 
-    model = XGBClassifier(
-        n_estimators=C.DELAY_TREES,
-        max_depth=C.DELAY_DEPTH,
-        learning_rate=C.DELAY_LR,
-        subsample=0.9, colsample_bytree=0.9,
-        eval_metric="logloss", random_state=C.SEED,
-        scale_pos_weight=float((ytr == 0).sum() / max((ytr == 1).sum(), 1)),
-    )
+    if XGBClassifier is not None:
+        model = XGBClassifier(
+            n_estimators=C.DELAY_TREES,
+            max_depth=C.DELAY_DEPTH,
+            learning_rate=C.DELAY_LR,
+            subsample=0.9, colsample_bytree=0.9,
+            eval_metric="logloss", random_state=C.SEED,
+            scale_pos_weight=float((ytr == 0).sum() / max((ytr == 1).sum(), 1)),
+        )
+    else:
+        model = HistGradientBoostingClassifier(
+            max_iter=C.DELAY_TREES,
+            max_depth=C.DELAY_DEPTH,
+            learning_rate=C.DELAY_LR,
+            random_state=C.SEED,
+        )
     model.fit(Xtr, ytr)
 
     p = model.predict_proba(Xte)[:, 1]
@@ -102,6 +121,7 @@ def train(df, verbose=True):
         "base_late_rate": float(y.mean()),
         "auc": float(roc_auc_score(yte, p)),
         "avg_precision": float(average_precision_score(yte, p)),
+        "backend": BACKEND,
     }
     metrics["verdict"] = (
         "no learnable signal" if metrics["auc"] < 0.55 else
@@ -115,6 +135,7 @@ def train(df, verbose=True):
         print(f"  AUC             {metrics['auc']:.3f}   "
               f"({metrics['verdict']})")
         print(f"  avg precision   {metrics['avg_precision']:.3f}")
+        print(f"  backend         {metrics['backend']}")
     return model, cats, metrics
 
 
@@ -129,6 +150,9 @@ def predict_live(df, model, cats):
 
 
 def importances(model, X_columns, top=6):
+    """Feature importances, when the backend exposes them."""
+    if not hasattr(model, "feature_importances_"):
+        return pd.Series(dtype=float)
     imp = pd.Series(model.feature_importances_, index=X_columns)
     return imp.sort_values(ascending=False).head(top)
 
@@ -156,9 +180,11 @@ if __name__ == "__main__":
         print("  can predict it. See what drives delay in this dataset below.")
     else:
         X, _ = _features(label_completed(df))
-        print("  what the model leans on:")
-        for k, v in importances(model, X.columns).items():
-            print(f"    {k:<22} {v:.3f}")
+        imp = importances(model, X.columns)
+        if len(imp):
+            print("  what the model leans on:")
+            for k, v in imp.items():
+                print(f"    {k:<22} {v:.3f}")
 
     risk = predict_live(df, model, cats)
     if len(risk):
