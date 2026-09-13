@@ -5,6 +5,8 @@ If you find yourself wanting to change a number while testing,
 it belongs in this file.
 """
 
+from pathlib import Path
+
 import pandas as pd
 
 # ─────────────────────────────────────────────────────────────
@@ -54,9 +56,14 @@ CAPTURE_SHARE = 0.55
 # ─────────────────────────────────────────────────────────────
 # FILE PATHS
 # ─────────────────────────────────────────────────────────────
-DATA_DIR      = "data"
-SYNTHETIC_CSV = f"{DATA_DIR}/mplads_synthetic.csv"
-FLAGGED_CSV   = f"{DATA_DIR}/mplads_flagged.csv"
+# Anchored to this file, not to the working directory. Relative paths meant
+# the project only ran from its own folder; now `python tests/..`, an IDE
+# run configuration and Streamlit Cloud all resolve the same files.
+PROJECT_ROOT  = Path(__file__).resolve().parent
+DATA_DIR      = PROJECT_ROOT / "data"
+SYNTHETIC_CSV = str(DATA_DIR / "mplads_synthetic.csv")
+FLAGGED_CSV   = str(DATA_DIR / "mplads_flagged.csv")
+REAL_CSV      = str(DATA_DIR / "mplads_real.csv")
 
 # ─────────────────────────────────────────────────────────────
 # THRESHOLDS
@@ -87,6 +94,11 @@ CORROBORATING = {"round_number", "agency_capture"}
 
 MAX_BLEND = 0.75   # weight on the single worst signal
 SUM_BLEND = 0.25   # weight on the corroboration bonus
+
+# How far below the threshold a corroborating detector is held. 0.95 means
+# its best possible solo composite is 95% of RISK_THRESHOLD — close enough
+# to matter when combined, never enough to flag a work on its own.
+CORROBORATING_MARGIN = 0.95
 
 # ─────────────────────────────────────────────────────────────
 # PER-DETECTOR SETTINGS

@@ -39,7 +39,10 @@ def r_sanction_sla(df, as_of):
 
     if "ida_approval" in df.columns:
         undecided = df.ida_approval.str.lower().str.strip() == "action pending"
-    elif M.available(df, ["sanction_date"]):
+    elif "sanction_date" in df.columns:
+        # M.available() is deliberately NOT used here. It returns False for
+        # an all-null column, but an all-null sanction_date is exactly the
+        # case this rule exists for: nothing has been sanctioned at all.
         undecided = df.sanction_date.isna()
     else:
         return None, "needs approval status or sanction date"
@@ -194,7 +197,7 @@ if __name__ == "__main__":
     import adapters as A
 
     if len(sys.argv) > 1 and sys.argv[1] == "real":
-        raw = pd.read_csv("data/mplads_real.csv", sep=";", dtype=str)
+        raw = pd.read_csv(C.REAL_CSV, sep=";", dtype=str)
         df, meta = A.from_esakshi_export(raw)
         label = "REAL eSAKSHI EXPORT"
     else:

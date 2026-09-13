@@ -189,7 +189,7 @@ if __name__ == "__main__":
     import sys
     import engine as E
 
-    path = sys.argv[1] if len(sys.argv) > 1 else "data/mplads_real.csv"
+    path = sys.argv[1] if len(sys.argv) > 1 else C.REAL_CSV
     raw = pd.read_csv(path, sep=";", dtype=str)
     std, meta = from_esakshi_export(raw)
 

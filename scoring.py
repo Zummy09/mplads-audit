@@ -18,8 +18,29 @@ import pandas as pd
 import config as C
 
 
+def corroborating_cap(detector):
+    """The highest score a corroborating detector may reach.
+
+    For a work with one signal, composite = score x weight, because
+    MAX_BLEND + SUM_BLEND = 1. So to guarantee such a detector can never
+    cross the threshold alone:
+
+        score x weight < RISK_THRESHOLD
+
+    Deriving the cap rather than hard-coding it means the rule stays true
+    if the threshold or a weight is ever changed.
+    """
+    w = C.WEIGHTS[detector]
+    return max(0.0, (C.RISK_THRESHOLD / w) * C.CORROBORATING_MARGIN)
+
+
 def combine(scores):
     """scores: DataFrame, one column per detector, one row per work."""
+    scores = scores.copy()
+    for det in C.CORROBORATING:
+        if det in scores.columns:
+            scores[det] = scores[det].clip(upper=corroborating_cap(det))
+
     weighted = scores * pd.Series(C.WEIGHTS)
     risk = (weighted.max(axis=1) * C.MAX_BLEND
             + weighted.sum(axis=1).clip(0, 1) * C.SUM_BLEND)

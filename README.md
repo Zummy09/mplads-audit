@@ -273,3 +273,53 @@ Open Database License (ODbL).
 
 Guidelines, Annexure-VIII and the Revised Audit Certificate Format are
 published by the Ministry of Statistics and Programme Implementation.
+
+# Tests
+
+```bash
+pip install pytest
+python generator.py      # the suite scores the generated register
+python -m pytest
+```
+
+55 tests, about 3 seconds.
+
+## What is covered
+
+| File | What it holds |
+|---|---|
+| `conftest.py` | `work()` builds one clean work; each test changes only the field it is testing |
+| `test_detectors.py` | every detector on handcrafted input, plus the cases that must NOT fire |
+| `test_pipeline.py` | score blending, compliance rules, generator, contract, end-to-end, regression floor |
+
+## The tests that matter most
+
+**`test_accuracy_has_not_regressed`** — fails if recall drops below 90% or
+precision below 95%. The README claims 92–93% and 97–99.5%; this stops the
+claim going stale silently.
+
+**`test_engine_never_reads_the_label`** — greps the engine source for
+`fraud_label`. The entire accuracy number rests on the engine not seeing the
+answer key, so that guarantee is checked rather than trusted.
+
+**`test_corroborating_detector_cannot_surface_a_work_alone`** — derives each
+corroborating detector's cap from the threshold and asserts it holds. This
+test found a real inconsistency: `agency_capture` could reach 0.55, above the
+0.40 threshold, contradicting the README.
+
+**`test_duplicate_ignores_different_places`** — the case that once produced
+214 of 221 false positives.
+
+**`test_ghost_works_are_internally_coherent`** — an early generator logged
+completion before the start date on 44 of 45 ghost works, so the detector was
+catching a data bug rather than fraud.
+
+## Bugs these tests found while being written
+
+1. `agency_capture` could fire alone, contradicting the documented design.
+   Fixed by deriving the cap in `scoring.combine` instead of hard-coding it.
+2. `r_sanction_sla` skipped itself when `sanction_date` was entirely null —
+   which is exactly the case it exists for.
+3. The peer fixture gave every work the same description, so the duplicate
+   detector flagged the whole group. The detector was right; the fixture was
+   wrong.
