@@ -13,9 +13,12 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+import compliance as K
 import config as C
+import delay as DL
 import engine as E
 import explain as X
+import models as M
 import reference as R
 
 st.set_page_config(page_title="PRAHARI — MPLADS Integrity Engine",
@@ -59,6 +62,27 @@ def score(csv_path, planted_key, threshold):
     df, scores, evidence, skipped = E.run(raw)
     df["flagged"] = df.risk_score > threshold
     return df, scores, evidence, skipped
+
+
+@st.cache_data(show_spinner="Checking guideline compliance\u2026")
+def compliance(csv_path, planted_key):
+    raw = pd.read_csv(csv_path)
+    if st.session_state.get("planted"):
+        raw = pd.concat([raw, pd.DataFrame(st.session_state.planted)],
+                        ignore_index=True)
+    for c in M.DATE_COLUMNS:
+        if c in raw.columns:
+            raw[c] = pd.to_datetime(raw[c], errors="coerce")
+    return K.check(raw)
+
+
+@st.cache_resource(show_spinner="Training the delay-risk model\u2026")
+def delay_model(csv_path):
+    raw = pd.read_csv(csv_path)
+    for c in M.DATE_COLUMNS:
+        if c in raw.columns:
+            raw[c] = pd.to_datetime(raw[c], errors="coerce")
+    return DL.train(raw, verbose=False)
 
 
 if "planted" not in st.session_state:
@@ -128,7 +152,11 @@ if skipped:
     st.info("Detectors that sat out on this data source: " +
             ", ".join(f"**{n}** ({why})" for n, why in skipped))
 
+breaches, cnotes, cskipped, cas_of = compliance(
+    C.SYNTHETIC_CSV, len(st.session_state.planted))
+
 tabs = st.tabs(["Overview", "Work register", "Work detail",
+                "Compliance", "Early warning",
                 "Red team \u2014 live test", "Accuracy"])
 
 # ═════════════════════════════════════════════════ 1. OVERVIEW
@@ -329,6 +357,18 @@ with tabs[2]:
                 with b.expander("Show the raw numbers"):
                     st.json(f["evidence"])
 
+        breach = [n for n in cnotes[idx]] if idx in cnotes.index else []
+        if breach:
+            st.markdown("#### Guideline compliance")
+            for b in breach:
+                colour = RED if b["severity"] == "VIOLATION" else AMBER
+                with st.container(border=True):
+                    a, bb = st.columns([1, 5])
+                    a.markdown(pill(b["severity"], colour) +
+                               f"<br><span class='quiet'>{b['clause']}</span>",
+                               unsafe_allow_html=True)
+                    bb.markdown(f"**{b['title']}**  \n{b['text']}")
+
         st.markdown("#### Recommended action")
         for r in note["resolution"]:
             st.markdown(f"- {r}")
@@ -350,9 +390,129 @@ with tabs[2]:
                            f"{row.work_id.replace('/', '_')}_note.txt",
                            "text/plain")
 
-# ═════════════════════════════════════════════════ 4. RED TEAM
+# ═════════════════════════════════════════════════ 4. COMPLIANCE
 
 with tabs[3]:
+    st.subheader("Guideline compliance")
+    st.caption("These are not detectors. A statistical outlier is an opinion \u2014 "
+               "a district officer can argue with it. A breach of a written "
+               "clause is a fact. So we report them separately, and never blend "
+               "them into the risk score.")
+    st.caption(f"Measured as of **{cas_of.date()}**, the newest date in this data.")
+
+    sc_idx = scope.index
+    sc_breaches = breaches.loc[sc_idx]
+
+    summary = K.summary(scope, sc_breaches)
+    k1, k2, k3 = st.columns(3)
+    viol = summary[summary.Severity == "VIOLATION"]
+    k1.metric("Clause violations", f"{int(viol.Works.sum()):,}")
+    k2.metric("Value involved", crore(viol["Value (Rs cr)"].sum() * 1e7))
+    any_b = sc_breaches.any(axis=1)
+    k3.metric("Works affected", f"{int(any_b.sum()):,}",
+              f"{any_b.mean():.1%} of scope")
+
+    st.dataframe(
+        summary, hide_index=True, use_container_width=True,
+        column_config={
+            "Share": st.column_config.ProgressColumn(
+                "Share", min_value=0.0, max_value=1.0, format="%.1f%%")})
+
+    if cskipped:
+        st.info("Rules that could not run on this data: " +
+                ", ".join(f"**{n}** ({why})" for n, why in cskipped))
+
+    hits = scope[any_b]
+    if len(hits):
+        st.divider()
+        st.markdown("**Works breaching a clause**")
+        show = hits[["work_id", "district", "work_name",
+                     "sanctioned_amount", "risk_score"]].copy()
+        show["Clauses"] = [
+            " · ".join(n["clause"] for n in cnotes[i]) for i in hits.index]
+        show = show.rename(columns={
+            "work_id": "Work ID", "district": "District", "work_name": "Work",
+            "sanctioned_amount": "Sanctioned (Rs)", "risk_score": "Risk"})
+        st.dataframe(show.head(300), hide_index=True, use_container_width=True,
+                     height=340)
+        st.caption("A work can breach a clause and still carry a low risk "
+                   "score. Rules and statistics answer different questions.")
+
+# ═════════════════════════════════════════════════ 5. EARLY WARNING
+
+with tabs[4]:
+    st.subheader("Early warning \u2014 which live works will run late")
+    st.caption("Guidelines \u00a73.2.13 set a one-year completion limit. For every "
+               "work already finished we know whether it beat that limit \u2014 a "
+               "real label. So this model trains on history and scores works "
+               "that are still running.")
+
+    model, cats, metrics = delay_model(C.SYNTHETIC_CSV)
+
+    if model is None:
+        st.warning(f"Model not trained: {metrics.get('skipped')}")
+    else:
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("AUC", f"{metrics['auc']:.3f}", metrics["verdict"])
+        m2.metric("Trained on", f"{metrics['train_rows']:,}")
+        m3.metric("Held out", f"{metrics['test_rows']:,}")
+        m4.metric("Base late rate", f"{metrics['base_late_rate']:.1%}")
+
+        if metrics["auc"] < 0.55:
+            st.error("AUC near 0.500 means the model is guessing. That is an "
+                     "honest measurement, not a bug \u2014 if delay does not depend "
+                     "on anything knowable at sanction time, nothing can "
+                     "predict it.")
+        else:
+            st.caption("Features are restricted to what is known on the day of "
+                       "sanction. Using the completion date would be training "
+                       "on the answer.")
+
+        risk = DL.predict_live(df, model, cats)
+        live = df.loc[risk.index]
+        live = live[live.index.isin(scope.index)]
+        risk = risk.loc[live.index]
+
+        if not len(live):
+            st.info("No live works in this scope.")
+        else:
+            st.divider()
+            c1, c2 = st.columns([2, 3])
+            with c1:
+                hi = risk > 0.70
+                st.metric("Live works in scope", f"{len(live):,}")
+                st.metric("High delay risk (>0.70)", f"{int(hi.sum()):,}")
+                st.metric("Value at risk of delay",
+                          crore(live.loc[hi, "sanctioned_amount"].sum()))
+            with c2:
+                fig = px.histogram(risk, nbins=25,
+                                   color_discrete_sequence=[AMBER])
+                fig.update_layout(height=250, showlegend=False,
+                                  margin=dict(t=10, l=0, r=0, b=0),
+                                  xaxis_title="predicted delay risk",
+                                  yaxis_title="live works")
+                st.plotly_chart(fig, use_container_width=True)
+
+            out = live.copy()
+            out["delay_risk"] = risk
+            out = out.sort_values("delay_risk", ascending=False)
+            cols = ["work_id", "district", "work_name", "implementing_agency",
+                    "sanctioned_amount", "delay_risk"]
+            st.dataframe(
+                out[cols].head(200).rename(columns={
+                    "work_id": "Work ID", "district": "District",
+                    "work_name": "Work", "implementing_agency": "Agency",
+                    "sanctioned_amount": "Sanctioned (Rs)",
+                    "delay_risk": "Delay risk"}),
+                hide_index=True, use_container_width=True, height=320,
+                column_config={"Delay risk": st.column_config.ProgressColumn(
+                    "Delay risk", min_value=0.0, max_value=1.0, format="%.2f")})
+            st.caption("This is a forecast, not a finding. It says intervene "
+                       "now, while there is still time.")
+
+# ═════════════════════════════════════════════════ 6. RED TEAM
+
+with tabs[5]:
     st.subheader("Plant a fraud right now and watch the engine catch it")
     st.caption("The engine has never seen the record you are about to create. "
                "Nothing here is pre-computed.")
@@ -453,7 +613,7 @@ with tabs[3]:
 
 # ═════════════════════════════════════════════════ 5. ACCURACY
 
-with tabs[4]:
+with tabs[6]:
     st.subheader("How we know it works")
     st.caption("Real MPLADS data has no answer key \u2014 nobody has labelled which "
                "works were fraudulent. So accuracy is measured on a synthetic "
