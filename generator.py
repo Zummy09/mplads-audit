@@ -67,13 +67,24 @@ def _base_row(i, state, district, constituency, mp, blocks, agency_pool):
     ward_village = block if location_type == "Rural" else f"Ward No. {RNG.randint(1, 40)}"
 
     has_desc = RNG.random() < C.DESCRIPTION_COVERAGE
+    agency_used = RNG.choice(agency_pool)
 
     # ── dates ────────────────────────────────────────────────
     rec = C.FY_START + timedelta(days=RNG.randint(0, 850))
     san = rec + timedelta(days=RNG.randint(8, 70))
     start = san + timedelta(days=RNG.randint(5, 60))
-    dur = RNG.randint(45, 400)
-    comp = start + timedelta(days=dur)
+
+    # Duration is driven, not random. See reference.py for why.
+    dur = R.BASE_DURATION.get(code, 180)
+    dur *= R.AGENCY_SPEED.get(agency_used, 1.0)
+    dur *= R.DISTRICT_FACTOR.get(district, 1.0)
+    if san.month in R.MONSOON_MONTHS:
+        dur *= R.MONSOON_FACTOR
+    # bigger works take proportionally longer
+    dur *= 1 + R.SIZE_FACTOR_PER_LOG * max(
+        0.0, (sanctioned / 1e6) ** 0.5 - 1)
+    dur = int(dur * RNG.uniform(0.72, 1.34))   # honest execution noise
+    comp = start + timedelta(days=max(dur, 20))
 
     done = comp <= C.TODAY
 
@@ -99,7 +110,7 @@ def _base_row(i, state, district, constituency, mp, blocks, agency_pool):
         "ward_or_village":      ward_village,
 
         # who
-        "implementing_agency":  RNG.choice(agency_pool),
+        "implementing_agency":  agency_used,
         "vendor_name":          RNG.choice(R.VENDORS),
 
         # dates

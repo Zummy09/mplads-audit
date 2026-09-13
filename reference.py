@@ -166,3 +166,52 @@ LANDMARKS = [
     "Post Office", "Anganwadi Centre", "Police Chowki", "Water Tank",
     "High School", "Community Centre", "Ration Shop", "Bridge Point",
 ]
+
+
+# ─────────────────────────────────────────────────────────────
+# DELAY DRIVERS
+#
+# Duration in the first version of this generator was random(45, 400),
+# independent of everything. A delay model trained on it scored AUC 0.503
+# — a coin flip — because there was nothing to learn.
+#
+# These factors model delay mechanisms that are documented in Indian
+# public works. They are assumptions about the world, not measurements,
+# and any model trained on them MUST be re-validated on real data before
+# it is trusted.
+# ─────────────────────────────────────────────────────────────
+
+# Typical build time by PFMS code, in days. A hand pump is not a bridge.
+BASE_DURATION = {
+    "5.001": 70,    "5.002": 45,    "5.003": 120,   "1.5.7": 150,
+    "1.5.8": 130,   "3.001": 210,   "1.3.15": 240,  "4.001": 250,
+    "10.001": 300,  "10.003": 280,  "13.001": 60,   "12.001": 170,
+    "1.001": 230,
+}
+
+# Some implementing agencies are chronically slower than others —
+# staffing, contractor pool, workload.
+AGENCY_SPEED = {
+    "PWD Division":                   0.92,
+    "Zilla Parishad Works":           1.05,
+    "Rural Engineering Services":     1.00,
+    "Municipal Corporation Works":    0.88,
+    "Block Development Office":       1.28,
+    "Jal Nigam Unit":                 0.95,
+    "Public Health Engineering Dept": 1.10,
+    "Panchayat Samiti Cell":          1.35,
+}
+
+# Works sanctioned just before or during the monsoon start late and run
+# long. June to September.
+MONSOON_MONTHS = {6, 7, 8, 9}
+MONSOON_FACTOR = 1.30
+
+# Remote or hilly districts run slower.
+DISTRICT_FACTOR = {
+    "Gaya": 1.15, "Bhagalpur": 1.12, "Murshidabad": 1.10,
+    "Belagavi": 1.08, "Nashik": 1.06, "Pavagada": 1.10,
+}
+
+# Bigger works take proportionally longer.
+SIZE_FACTOR_PER_LOG = 0.18

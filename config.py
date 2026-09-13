@@ -135,3 +135,11 @@ ISO_CONTAMINATION = 0.05
 # precision starts to fall. At 0.50 a maximum anomaly score reaches 0.50,
 # above the 0.40 threshold, so it CAN surface a work alone — which is the
 # point of a detector meant to catch what no rule anticipates.
+
+# ─────────────────────────────────────────────────────────────
+# DELAY-RISK MODEL
+# ─────────────────────────────────────────────────────────────
+DELAY_MIN_TRAIN = 300     # below this, not worth training
+DELAY_TREES     = 300
+DELAY_DEPTH     = 4
+DELAY_LR        = 0.08
