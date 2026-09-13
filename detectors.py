@@ -174,6 +174,10 @@ def d_duplicate(df):
     for _, grp in df.groupby(key, sort=False):
         if len(grp) < 2:
             continue
+        # Density discount: the more works share this peer group, the more
+        # coincidental matches we expect, so each one is worth less.
+        density = min(1.0, (C.DUP_BASELINE_GROUP / len(grp))
+                      ** C.DUP_DENSITY_POWER)
         g = grp.sort_values(date_col)
         amts = g.sanctioned_amount.values
         dates = g[date_col].values
@@ -207,9 +211,12 @@ def d_duplicate(df):
                     if rel > C.DUP_FALLBACK_TOL or gap > C.DUP_FALLBACK_WINDOW:
                         continue
                     conf, basis = 0.70, "ward_or_village"
-                else:
+                elif C.DUP_ALLOW_NO_LOCATION:
                     conf, basis = 0.35, "amount_and_date_only"
+                else:
+                    continue
 
+                conf *= density
                 s = (1 - rel * 10) * conf
                 for x, y in ((a, b), (b, a)):
                     if s > scores[idxs[x]]:
@@ -223,7 +230,9 @@ def d_duplicate(df):
                             "text_similarity": (None if sim is None
                                                 else round(sim, 3)),
                             "match_basis": basis,
-                            "confidence": conf,
+                            "confidence": round(conf, 3),
+                            "peer_group_size": int(len(grp)),
+                            "density_discount": round(density, 3),
                         }
 
     return scores.clip(0, 1), pd.Series([ev[i] for i in df.index],

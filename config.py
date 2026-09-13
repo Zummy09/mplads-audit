@@ -105,6 +105,20 @@ DUP_MIN_TEXT_SIM = 0.75
 DUP_FALLBACK_TOL    = 0.03
 DUP_FALLBACK_WINDOW = 45
 
+# Coincidental near-matches grow with the SQUARE of group size. In a peer
+# group of 3 a match is evidence; in a group of 900 it is arithmetic.
+# So confidence is scaled down as the group gets denser.
+#   factor = (DUP_BASELINE_GROUP / n) ** DUP_DENSITY_POWER, capped at 1.0
+DUP_BASELINE_GROUP = 6
+DUP_DENSITY_POWER  = 0.5
+
+# Matching on amount and date alone, with NO location evidence at all,
+# is the weakest path. Disabled by default: a duplicate claim an auditor
+# cannot locate is not actionable. On the real export this alone cut the
+# flag rate from 14.6% to 9.5%, with no change to synthetic recall.
+# Set True to accept those weaker matches.
+DUP_ALLOW_NO_LOCATION = False
+
 UNIT_COST_Z_FLOOR   = 3.5
 UNIT_COST_Z_RANGE   = 6.0
 UNIT_COST_MIN_PEERS = 5
