@@ -87,6 +87,30 @@ def report(df, scores, skipped):
         print("  none")
 
     print("\n" + "=" * 62)
+    print("WHAT THE ML LAYER ADDS")
+    print("=" * 62)
+    if "isolation_forest" in scores.columns:
+        w = scores * pd.Series(C.WEIGHTS)
+        rules_only = scores.drop(columns=["isolation_forest"])
+        wr = rules_only * pd.Series(
+            {k: v for k, v in C.WEIGHTS.items() if k != "isolation_forest"})
+        risk_r = (wr.max(axis=1) * C.MAX_BLEND
+                  + wr.sum(axis=1).clip(0, 1) * C.SUM_BLEND)
+        fr = (risk_r > C.RISK_THRESHOLD)[work_level.index]
+        tp_r = int((fr & truth).sum())
+        print(f"  rules only   recall {tp_r/max(int(truth.sum()),1):6.1%}   "
+              f"precision {tp_r/max(int(fr.sum()),1):6.1%}   "
+              f"surfaced {int(fr.sum()):>4}")
+        print(f"  with ML      recall {recall:6.1%}   "
+              f"precision {precision:6.1%}   surfaced {int(flag.sum()):>4}")
+        gained = work_level[flag & ~fr & truth]
+        print(f"\n  frauds recovered by the ML layer: {len(gained)}")
+        for k, v in gained[M.GROUND_TRUTH_COLUMN].value_counts().items():
+            print(f"    {k:<24} {v:>3}")
+    else:
+        print("  isolation_forest not in this run")
+
+    print("\n" + "=" * 62)
     print("MISSED FRAUDS BY TYPE")
     print("=" * 62)
     miss = work_level[~flag & truth]

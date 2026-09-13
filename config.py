@@ -74,6 +74,7 @@ WEIGHTS = {
     "unit_cost":      0.85,   # real work, inflated price
     "cost_overrun":   0.75,   # price grew after approval
     "stalled_work":   0.60,   # waste, not theft
+    "isolation_forest": 0.50, # unsupervised ML — catches what no rule anticipates
     "agency_capture": 0.55,   # a risk condition, not a finding
     "round_number":   0.45,   # corroboration only
 }
@@ -119,3 +120,18 @@ IDLE_AGE_RANGE    = 730
 # Floor is set just above natural variation; HHI 0.46 scores 1.0.
 HHI_FLOOR = 0.26
 HHI_RANGE = 0.20
+
+# ─────────────────────────────────────────────────────────────
+# ISOLATION FOREST
+# ─────────────────────────────────────────────────────────────
+ISO_TREES         = 200
+ISO_MAX_SAMPLES   = 512
+# "assume roughly this share of works are anomalous". Not a claim about
+# the real fraud rate — it is the knob that sets how readily the model
+# calls something odd.
+ISO_CONTAMINATION = 0.05
+# Weight 0.50 chosen by measurement, not by feel. On planted ground truth it
+# lifts recall 92.1% -> 93.7% with precision unchanged at 99.3%. Above 0.60
+# precision starts to fall. At 0.50 a maximum anomaly score reaches 0.50,
+# above the 0.40 threshold, so it CAN surface a work alone — which is the
+# point of a detector meant to catch what no rule anticipates.

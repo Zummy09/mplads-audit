@@ -486,6 +486,8 @@ def h_agency_capture(e, row):
 # REGISTRY
 # ═════════════════════════════════════════════════════════════
 
+import ml  # noqa: E402  (imported here to keep the detector list readable)
+
 DETECTORS = {
     "ghost_work":     (d_ghost_work,     h_ghost_work),
     "duplicate":      (d_duplicate,      h_duplicate),
@@ -494,4 +496,5 @@ DETECTORS = {
     "stalled_work":   (d_stalled_work,   h_stalled_work),
     "round_number":   (d_round_number,   h_round_number),
     "agency_capture": (d_agency_capture, h_agency_capture),
+    "isolation_forest": (ml.d_isolation_forest, ml.h_isolation_forest),
 }
